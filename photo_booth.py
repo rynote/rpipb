@@ -28,7 +28,7 @@ except:
 
 while True:
   if (GPIO.input(SWITCH)):
-    camera = subprocess.check_output('lsusb', shell=True)#to see if Nikon attached
+    usbdevs = subprocess.check_output('lsusb', shell=True)#to see if Nikon attached
     snap = 0
     while snap < 4:
       print("pose!")
@@ -48,7 +48,7 @@ while True:
       GPIO.output(POSE_LED, False)
       print("SNAP")
       gpout = ""
-      if camera.find('Nikon') != -1: #if Nikon found take photo with gphoto
+      if usbdevs.find('Nikon') != -1: #if Nikon found take photo with gphoto
         gpout = subprocess.check_output("gphoto2 --capture-image-and-download --filename /home/pi/photobooth_images/photobooth%H%M%S.jpg", stderr=subprocess.STDOUT, shell=True)
       else: #take photo with raspicam
         timestamp = datetime.now()
@@ -71,7 +71,13 @@ while True:
     # TODO: implement a reboot button
     # Wait to ensure that print queue doesn't pile up
     # TODO: check status of printer instead of using this arbitrary wait time
-    time.sleep(110)
+    if usbdevs.find('Canon') != -1: #if Canon Selphy found wait longer
+        print("Sending to printer...")
+        time.sleep(90)
+    else:
+        print("No printer found... saving photos to archive")
+	time.sleep(30)
+
     print("ready for next round")
     GPIO.output(PRINT_LED, False)
     GPIO.output(BUTTON_LED, True)
