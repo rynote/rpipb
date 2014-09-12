@@ -12,6 +12,8 @@ fi
 montage /home/pi/photobooth_images/*.jpg -tile 2x2 -geometry +10+10 /home/pi/temp_montage2.jpg
 montage /home/pi/temp_montage2.jpg /home/pi/photobooth_label.jpg -tile 1x2 -geometry +5+5 /home/pi/temp_montage3.jpg
 
+echo "Assembly Complete. Printing..."
+
 #print to Selphy if Canon is listed as attached USB device
 if [[ $USBDEVS == *Canon* ]]
 then

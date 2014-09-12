@@ -76,7 +76,7 @@ while True:
         time.sleep(90)
     else:
         print("No printer found... saving photos to archive")
-	time.sleep(30)
+	time.sleep(20)
 
     print("ready for next round")
     GPIO.output(PRINT_LED, False)
