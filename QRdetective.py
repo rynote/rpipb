@@ -2,10 +2,8 @@ import subprocess
 import os
 
 def detect():
-    """Detects qr code from camera and returns string that represents that code.
+    #Detects qr code(s) from camera and returns a list that represents the code(s).
 
-    return -- qr code from image as string
-    """
     subprocess.call(["raspistill -n -t 1 -w 512 -h 512 -o cam.png"],shell=True)
     out = subprocess.Popen(["zbarimg -D cam.png"], stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'), shell=True).communicate()[0] 
     qr_code = None
