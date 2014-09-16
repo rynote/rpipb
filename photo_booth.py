@@ -26,8 +26,14 @@ try:
 except:
     pass
 
-while True:
-  if (GPIO.input(SWITCH)):
+
+busy = False #initial state, not running main function
+
+def callback_function(input_pin):
+  global busy
+  if busy == False:
+    GPIO.remove_event_detect(SWITCH) #remove to avoid some queueing it seemed
+    busy = True
     usbdevs = subprocess.check_output('lsusb', shell=True)#to see if Nikon attached
     snap = 0
     while snap < 4:
@@ -81,3 +87,9 @@ while True:
     print("ready for next round")
     GPIO.output(PRINT_LED, False)
     GPIO.output(BUTTON_LED, True)
+
+    busy = False #Ready to start again if button pushed
+    GPIO.add_event_detect(SWITCH,GPIO.FALLING, callback=callback_function) #enable the interrupt
+
+GPIO.add_event_detect(SWITCH,GPIO.FALLING, callback=callback_function)
+
