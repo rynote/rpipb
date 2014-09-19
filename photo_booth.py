@@ -6,7 +6,12 @@ from datetime import datetime #for raspistill filename
 
 import sys, pygame
 
-os.environ["SDL_FBDEV"] = "/dev/fb1"
+#os.environ["SDL_FBDEV"] = "/dev/fb1"
+# Init framebuffer/touchscreen environment variables
+os.putenv('SDL_VIDEODRIVER', 'fbcon')
+os.putenv('SDL_FBDEV'      , '/dev/fb1')
+os.putenv('SDL_MOUSEDRV'   , 'TSLIB')
+os.putenv('SDL_MOUSEDEV'   , '/dev/input/touchscreen')
 
 pygame.init()
 size = width, height = 320, 240
@@ -31,7 +36,7 @@ def cleanupTempFiles():
 
 def showCountdown():
     showBlack()
-    time.sleep(1)
+    time.sleep(.5)
     
     print("pose!")
     screen.blit(img_3,(0,0))
@@ -117,8 +122,12 @@ busy = False
 
 while 1:
     event = pygame.event.wait()
-    if event.type == pygame.MOUSEBUTTONDOWN:
-        print ("screen touched")
+    if event.type == pygame.MOUSEBUTTONUP:
+        x , y = event.pos
+        print ("screen touched at: (%d , %d)" % event.pos)
+        if (x > 240) & (y > 160):
+            sys.exit(1)
+        pygame.mouse.set_pos([0,0])
         busy = True
         takePhotos()
 
