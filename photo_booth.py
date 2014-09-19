@@ -1,98 +1,124 @@
 #!/usr/bin/python
 
-import RPi.GPIO as GPIO, time, os, subprocess
+import time, os, subprocess
 
 from datetime import datetime #for raspistill filename
 
-# GPIO setup
-GPIO.setmode(GPIO.BCM)
-SWITCH = 24
-GPIO.setup(SWITCH, GPIO.IN)
-RESET = 25
-GPIO.setup(RESET, GPIO.IN)
-PRINT_LED = 22
-POSE_LED = 18
-BUTTON_LED = 23
-GPIO.setup(POSE_LED, GPIO.OUT)
-GPIO.setup(BUTTON_LED, GPIO.OUT)
-GPIO.setup(PRINT_LED, GPIO.OUT)
-GPIO.output(BUTTON_LED, True)
-GPIO.output(PRINT_LED, False)
+import sys, pygame
 
-#Try to cleanup stray temp images from before
-try:
-    subprocess.check_output('rm /home/pi/photobooth_images/*.jpg',shell=True)
-    subprocess.check_output('rm /home/pi/temp_*.jpg',shell=True)
-except:
-    pass
+os.environ["SDL_FBDEV"] = "/dev/fb1"
+
+pygame.init()
+size = width, height = 320, 240
+black = 0, 0, 0
+screen = pygame.display.set_mode(size)
+pygame.mouse.set_visible(0)
+img_ready = pygame.image.load("pb_screens/ready.jpg")
+img_working = pygame.image.load("pb_screens/working.jpg")
+img_printing = pygame.image.load("pb_screens/printing.jpg")
+img_star = pygame.image.load("pb_screens/star.jpg")
+img_1 = pygame.image.load("pb_screens/1.jpg")
+img_2 = pygame.image.load("pb_screens/2.jpg")
+img_3 = pygame.image.load("pb_screens/3.jpg")
 
 
-busy = False #initial state, not running main function
+def cleanupTempFiles():
+    try:
+        subprocess.check_output('rm /home/pi/photobooth_images/*.jpg',shell=True)
+        subprocess.check_output('rm /home/pi/temp_*.jpg',shell=True)
+    except:
+        pass
 
-def callback_function(input_pin):
-  global busy
-  if busy == False:
-    #GPIO.remove_event_detect(SWITCH) #remove to avoid some queueing it seemed
+def showCountdown():
+    showBlack()
+    time.sleep(1)
+    
+    print("pose!")
+    screen.blit(img_3,(0,0))
+    pygame.display.flip()  
+    time.sleep(1)
+	
+    screen.blit(img_2,(0,0))
+    pygame.display.flip()
+    time.sleep(1)
+    
+    screen.blit(img_1,(0,0))
+    pygame.display.flip()
+    time.sleep(1)
+    
+    print("SNAP")
+    screen.blit(img_star,(0,0))
+    pygame.display.flip()
+
+def showWorking():
+    print("working...")
+    screen.blit(img_working,(0,0))
+    pygame.display.flip()
+
+def showPrinting():
+    print("printing...")
+    screen.blit(img_printing,(0,0))
+    pygame.display.flip()
+
+def showBlack():
+    print("black...")
+    screen.fill(black)
+    pygame.display.flip()
+	
+def showReady():
+    print("ready to take photos")	
+    screen.blit(img_ready,(0,0))
+    pygame.display.flip()
+    pygame.event.clear()
+
+def takePhotos():
+    global busy
     busy = True
     usbdevs = subprocess.check_output('lsusb', shell=True)#to see if Nikon attached
     snap = 0
     while snap < 4:
-      print("pose!")
-      GPIO.output(BUTTON_LED, False)
-      GPIO.output(POSE_LED, True)
-      time.sleep(1.5)
-      for i in range(5):
-        GPIO.output(POSE_LED, False)
-        time.sleep(0.4)
-        GPIO.output(POSE_LED, True)
-        time.sleep(0.4)
-      for i in range(5):
-        GPIO.output(POSE_LED, False)
-        time.sleep(0.1)
-        GPIO.output(POSE_LED, True)
-        time.sleep(0.1)
-      GPIO.output(POSE_LED, False)
-      print("SNAP")
-      gpout = ""
-      if usbdevs.find('Nikon') != -1: #if Nikon found take photo with gphoto
-        gpout = subprocess.check_output("gphoto2 --capture-image-and-download --filename /home/pi/photobooth_images/photobooth%H%M%S.jpg", stderr=subprocess.STDOUT, shell=True)
-      else: #take photo with raspicam
-        timestamp = datetime.now()
-        filename = ("/home/pi/photobooth_images/photobooth%02d%02d%02d.jpg" % (timestamp.hour, timestamp.minute, timestamp.second))
-        width = 1296 #648 # 2592 # 1296
-        height = 972 #968 # 1944 # 972
-        quality = 70 # Set jpeg quality (0 to 100)
-        settings = ""
-        gpout = subprocess.check_output("raspistill %s -w %s -h %s -t 200 -e jpg -q %s -n -o %s" % (settings, width, height, quality, filename), stderr=subprocess.STDOUT, shell=True)
+        showCountdown()
 
-      print(gpout)
-      if "ERROR" not in gpout:
-        snap += 1
-      GPIO.output(POSE_LED, False)
-      time.sleep(0.5)
-    print("please wait while your photos print...")
-    GPIO.output(PRINT_LED, True)
+        gpout = ""
+        if usbdevs.find('Nikon') != -1: #if Nikon found take photo with gphoto
+            gpout = subprocess.check_output("gphoto2 --capture-image-and-download --filename /home/pi/photobooth_images/photobooth%H%M%S.jpg", stderr=subprocess.STDOUT, shell=True)
+        else: #take photo with raspicam
+            timestamp = datetime.now()
+            filename = ("/home/pi/photobooth_images/photobooth%02d%02d%02d.jpg" % (timestamp.hour, timestamp.minute, timestamp.second))
+            width = 1296 #648 # 2592 # 1296
+            height = 972 #968 # 1944 # 972
+            quality = 70 # Set jpeg quality (0 to 100)
+            settings = ""
+            gpout = subprocess.check_output("raspistill %s -w %s -h %s -t 200 -e jpg -q %s -n -o %s" % (settings, width, height, quality, filename), stderr=subprocess.STDOUT, shell=True)
+
+        print(gpout)
+        if "ERROR" not in gpout:
+            snap += 1
+            
     # build image and send to printer
+    showWorking()   
     subprocess.call("sudo /home/pi/scripts/photobooth/assemble_and_print", shell=True)
-    # TODO: implement a reboot button
-    # Wait to ensure that print queue doesn't pile up
-    # TODO: check status of printer instead of using this arbitrary wait time
+    
     if usbdevs.find('Canon') != -1: #if Canon Selphy found wait longer
+        showPrinting()
         print("Sending to printer...")
         time.sleep(90)
     else:
         print("No printer found... saving photos to archive")
-	time.sleep(20)
+        time.sleep(20)
+	
+    showReady()
+    busy = False
 
-    print("ready for next round")
-    GPIO.output(PRINT_LED, False)
-    GPIO.output(BUTTON_LED, True)
 
-    busy = False #Ready to start again if button pushed
-    #GPIO.add_event_detect(SWITCH,GPIO.FALLING, callback=callback_function) #enable the interrupt
+cleanupTempFiles()
+showReady()
+busy = False
 
-GPIO.add_event_detect(SWITCH,GPIO.FALLING, callback=callback_function,bouncetime=1000)
+while 1:
+    event = pygame.event.wait()
+    if event.type == pygame.MOUSEBUTTONDOWN:
+        print ("screen touched")
+        busy = True
+        takePhotos()
 
-#i think we need a loop in here somewhere
-while True:
-    time.sleep(.1)
