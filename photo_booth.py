@@ -6,50 +6,51 @@ from datetime import datetime #for raspistill filename
 
 import sys, pygame
 
-#os.environ["SDL_FBDEV"] = "/dev/fb1"
 # Init framebuffer/touchscreen environment variables
 os.putenv('SDL_VIDEODRIVER', 'fbcon')
 os.putenv('SDL_FBDEV'      , '/dev/fb1')
 os.putenv('SDL_MOUSEDRV'   , 'TSLIB')
 os.putenv('SDL_MOUSEDEV'   , '/dev/input/touchscreen')
 
+#pygame setup
 pygame.init()
 size = width, height = 320, 240
 black = 0, 0, 0
 screen = pygame.display.set_mode(size)
 pygame.mouse.set_visible(0)
-img_ready = pygame.image.load("pb_screens/ready.jpg")
-img_working = pygame.image.load("pb_screens/working.jpg")
-img_printing = pygame.image.load("pb_screens/printing.jpg")
-img_star = pygame.image.load("pb_screens/star.jpg")
-img_1 = pygame.image.load("pb_screens/1.jpg")
-img_2 = pygame.image.load("pb_screens/2.jpg")
-img_3 = pygame.image.load("pb_screens/3.jpg")
+pathToScript = '/home/pi/scripts/photobooth/'
+img_ready = pygame.image.load(pathToScript + "pb_screens/ready.jpg")
+img_working = pygame.image.load(pathToScript + "pb_screens/working.jpg")
+img_printing = pygame.image.load(pathToScript + "pb_screens/printing.jpg")
+img_star = pygame.image.load(pathToScript + "pb_screens/star.jpg")
+img_1 = pygame.image.load(pathToScript + "pb_screens/1.jpg")
+img_2 = pygame.image.load(pathToScript + "pb_screens/2.jpg")
+img_3 = pygame.image.load(pathToScript + "pb_screens/3.jpg")
 
+#initialize the global variables
+usbdevs = 0
+busy = False
 
-def cleanupTempFiles():
-    try:
-        subprocess.check_output('rm /home/pi/photobooth_images/*.jpg',shell=True)
-        subprocess.check_output('rm /home/pi/temp_*.jpg',shell=True)
-    except:
-        pass
+###################
+# Display functions
+###################
 
 def showCountdown():
     showBlack()
-    time.sleep(.5)
+    time.sleep(.25)
     
     print("pose!")
     screen.blit(img_3,(0,0))
     pygame.display.flip()  
-    time.sleep(1)
+    time.sleep(.75)
 	
     screen.blit(img_2,(0,0))
     pygame.display.flip()
-    time.sleep(1)
+    time.sleep(.75)
     
     screen.blit(img_1,(0,0))
     pygame.display.flip()
-    time.sleep(1)
+    time.sleep(.75)
     
     print("SNAP")
     screen.blit(img_star,(0,0))
@@ -74,18 +75,37 @@ def showReady():
     print("ready to take photos")	
     screen.blit(img_ready,(0,0))
     pygame.display.flip()
-    pygame.event.clear()
+    
+###################
+# Utility functions
+###################
+
+def checkCamera():
+    global usbdevs
+    usbdevs = subprocess.check_output('lsusb', shell=True)#to see if Nikon attached
+    if usbdevs.find('Nikon') != -1:
+        return True
+    else:
+        return False
+
+def cleanupTempFiles():
+    try:
+        subprocess.check_output('rm /home/pi/photobooth_images/*.jpg',shell=True)
+        subprocess.check_output('rm /home/pi/temp_*.jpg',shell=True)
+    except:
+        pass
 
 def takePhotos():
     global busy
+    global usbdevs
+    use_dslr = checkCamera()
     busy = True
-    usbdevs = subprocess.check_output('lsusb', shell=True)#to see if Nikon attached
     snap = 0
+    
     while snap < 4:
         showCountdown()
-
         gpout = ""
-        if usbdevs.find('Nikon') != -1: #if Nikon found take photo with gphoto
+        if use_dslr: #if Nikon found take photo with gphoto
             gpout = subprocess.check_output("gphoto2 --capture-image-and-download --filename /home/pi/photobooth_images/photobooth%H%M%S.jpg", stderr=subprocess.STDOUT, shell=True)
         else: #take photo with raspicam
             timestamp = datetime.now()
@@ -102,7 +122,12 @@ def takePhotos():
             
     # build image and send to printer
     showWorking()   
-    subprocess.call("sudo /home/pi/scripts/photobooth/assemble_and_print", shell=True)
+    #subprocess.call("sudo /home/pi/scripts/photobooth/assemble_and_print", shell=True)
+    subprocess.call("sudo /home/pi/scripts/photobooth/assemble.sh", shell=True)
+    
+    showPrinting()
+    subprocess.call("sudo /home/pi/scripts/photobooth/print.sh", shell=True)
+    print ('post print.sh') # for testing
     
     if usbdevs.find('Canon') != -1: #if Canon Selphy found wait longer
         showPrinting()
@@ -115,17 +140,21 @@ def takePhotos():
     showReady()
     busy = False
 
+############
+# start here
+############
 
 cleanupTempFiles()
 showReady()
-busy = False
 
 while 1:
     event = pygame.event.wait()
     if event.type == pygame.MOUSEBUTTONUP:
+        pygame.event.clear([pygame.MOUSEMOTION,pygame.MOUSEBUTTONUP,pygame.MOUSEBUTTONDOWN])
         x , y = event.pos
         print ("screen touched at: (%d , %d)" % event.pos)
         if (x > 240) & (y > 160):
+            print ('Exiting...')
             sys.exit(1)
         pygame.mouse.set_pos([0,0])
         busy = True
