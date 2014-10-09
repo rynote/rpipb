@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
-import RPi.GPIO as GPIO, time, os, subprocess
-
+import RPi.GPIO as GPIO, time, os, subprocess, sys
+import time 
 from datetime import datetime #for raspistill filename
 
 # GPIO setup
@@ -19,10 +19,12 @@ GPIO.setup(PRINT_LED, GPIO.OUT)
 GPIO.output(BUTTON_LED, True)
 GPIO.output(PRINT_LED, False)
 
-
 #initialize the global variables
 usbdevs = 0
 busy = False
+debug_mode = True
+button_enabled = False
+time_stamp = time.time()
 
 
 ###################
@@ -32,6 +34,8 @@ busy = False
 def showCountdown():
     print("pose!")
     GPIO.output(BUTTON_LED, False)
+    if (debug_mode == True): return #if testing, don't do the lights blinking
+    
     GPIO.output(POSE_LED, True)
     time.sleep(1.5)
     for i in range(5):
@@ -63,6 +67,11 @@ def showReady():
     GPIO.output(POSE_LED, False)
     GPIO.output(BUTTON_LED, True)
 
+def ledsOff():
+	GPIO.output(BUTTON_LED, False)
+	GPIO.output(POSE_LED, False)
+	GPIO.output(PRINT_LED, False)
+	
 ###################
 # Utility functions
 ###################
@@ -94,28 +103,35 @@ def doAssemble():
 
 
 def doPrint():
-    print("please wait while your photos print...")
+    print("photos being sent to the printer...")
     subprocess.call("sudo /home/pi/scripts/photobooth/print.sh", shell=True)
-    pass
 
 def initCallback():
-    GPIO.add_event_detect(SWITCH,GPIO.FALLING, callback=cb_takePhotos, bouncetime=1000)
+    GPIO.add_event_detect(SWITCH,GPIO.FALLING, callback=cb_buttonPressed, bouncetime=1000)
 
-def disableCallback():
-    GPIO.remove_event_detect(SWITCH) #remove to avoid some queueing it seemed
 
-def cb_doNothing():
-    pass
-    
 ###################
-# The Callback function (the mEAT)
+# The Callback function and main function that does everything (pray!)
 ###################
 
-def cb_takePhotos(input_pin):
-    print ('Button Pressed')
+def cb_buttonPressed(input_pin):
+    global button_enabled
+    global time_stamp
+    time_now = time.time()
+    print ('Button Pressed! Enabled?: %s, The time is %s' % (button_enabled, time.time()))
+    print ('Time since last press: %s' % (time_now - time_stamp))
+    if (button_enabled == True) and ((time_now - time_stamp) > 5.0): 
+		button_enabled = False
+		takePhotos(input_pin)
+		button_enabled = True
+    time_stamp = time.time() #now, now that the function has run
+
+def takePhotos(input_pin):
+    print ('Get ready to take pictures!')
     global busy
+    global button_enabled
+    
     if busy == False:
-        #disableCallback() #disable the button
         busy = True
         useDSLR = checkCamera()
         usePrinter = (usbdevs.find('Canon') != -1)
@@ -125,6 +141,7 @@ def cb_takePhotos(input_pin):
             gpout = ""
             if useDSLR: #if Nikon found take photo with gphoto
                 gpout = subprocess.check_output("gphoto2 --capture-image-and-download --filename /home/pi/photobooth_images/photobooth%H%M%S.jpg", stderr=subprocess.STDOUT, shell=True)
+            
             else: #take photo with raspicam
                 timestamp = datetime.now()
                 filename = ("/home/pi/photobooth_images/photobooth%02d%02d%02d.jpg" % (timestamp.hour, timestamp.minute, timestamp.second))
@@ -140,12 +157,10 @@ def cb_takePhotos(input_pin):
                 GPIO.output(POSE_LED, False)
 
         showWorking()
-        #doAssemble()
-        subprocess.call("sudo /home/pi/scripts/photobooth/assemble.sh", shell=True)
+        doAssemble()
 
         showPrinting()
-        #doPrinting()
-        subprocess.call("sudo /home/pi/scripts/photobooth/print.sh", shell=True)
+        doPrint()
 
         if usePrinter: #if Canon Selphy found wait longer
             print("Sending to printer...")
@@ -154,9 +169,9 @@ def cb_takePhotos(input_pin):
             print("No printer found... saving photos to archive")
             time.sleep(20)
 
-        #cleanupTempFiles()
         showReady()
         busy = False
+
 
 ############
 # start here
@@ -165,6 +180,7 @@ def cb_takePhotos(input_pin):
 initCallback()
 cleanupTempFiles()
 showReady()
+button_enabled = True
 
 
 #i think we need a loop in here somewhere
@@ -173,7 +189,11 @@ try:
     while True:
         time.sleep(.1)
 except KeyboardInterrupt:  
-    GPIO.cleanup()       # clean up GPIO on CTRL+C exit  
-    
-GPIO.cleanup()           # clean up GPIO on normal exit  
+    print ('keyboard interrupt... exiting.')
+    ledsOff 				#turn off any lights on your way out
+    GPIO.cleanup()       	# clean up GPIO on CTRL+C exit
+    sys.exit()
 
+ledsOff()					#turn off any lights on your way out
+GPIO.cleanup()           	# clean up GPIO on normal exit  
+sys.exit()
